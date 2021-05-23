@@ -39,7 +39,7 @@ for city in citiesTop5NH:
     # Give 5 seconds to load the page and all elements needed.
     # If it can't find elements correctly, try increasing the range.
     for x in range(5):
-        print(f'Page loading... {x+1}')
+        print(f'Page loading... {x+1} of 5 seconds')
         time.sleep(1)
 
     # Makes sure elements to be scraped are found before scraping
@@ -78,8 +78,7 @@ for city in citiesTop5NH:
     mongoDBPost = []
     collection = mongoDBConn.db[f"{locationCity}_{locationState}"]
 
-    print("Elements located successfully.")
-    print("Scraping...")
+    print("Elements located successfully. ✔")
     time.sleep(1)
 
     print(f'''**********
@@ -88,22 +87,31 @@ Time: {timeOfScrape}
 Day: {dayOfScrape}
 **********''')
 
-    # Create a csv and write the title row in a tuple
-    f = open(f"{locationCity}_{locationState}.csv", "a", newline="")
-    tupTitle = ("Timestamp", "Website Time", "City", "State", "Time","Temperature", "Precipitation")
-    writer = csv.writer(f)
-    # Comment out "writer.writerow(tupTitle)" to append to
-    # an already existing file without adding the title line.
-    writer.writerow(tupTitle)
+    # Check if csv exists for this city_state to decide if title row needs to be written.
+    # then move on, or create a csv and write the title row
+    if path.exists(f"{locationCity}_{locationState}.csv"):
+        print(f"File {locationCity}_{locationState}.csv exists. ✔")
+        f = open(f"{locationCity}_{locationState}.csv", "a", newline="")
+        writer = csv.writer(f)
+    else:
+        print(f"❌ File {locationCity}_{locationState}.csv does NOT exist.")
+        print(f"Creating file...")
+        f = open(f"{locationCity}_{locationState}.csv", "a", newline="")
+        writer = csv.writer(f)
+        tupTitle = ("Timestamp", "Website Time", "City", "State", "Time","Temperature (F°)", "Precipitation (%)")
+        writer.writerow(tupTitle)
+        print("File created. ✔")
 
-    # Scrape data for each hour up to 24 hours in the future
+    # Scrape data up to 24 hours in the future
     # then store data in lists
     # then write rows of list data into csv
+    # and insert to database
+    print("Getting data...")
     for i in range(25):
         hourlyDetails.append(hourlyList.find_element_by_id(f'detailIndex{i}'))
         detailsTime.append(hourlyDetails[i].find_element_by_class_name("DetailsSummary--daypartName--1Mebr").text)
-        detailsTemp.append(hourlyDetails[i].find_element_by_class_name("DetailsSummary--temperature--3FMlw").text)
-        detailsPrecip.append(hourlyDetails[i].find_element_by_class_name("DetailsSummary--precip--2ARnx").text)
+        detailsTemp.append(hourlyDetails[i].find_element_by_class_name("DetailsSummary--temperature--3FMlw").text[0:-1])
+        detailsPrecip.append(hourlyDetails[i].find_element_by_class_name("DetailsSummary--precip--2ARnx").text[0:-1])
 
         # print(f'''Hours forward: {i}
         # Time: {detailsTime[i]}
@@ -117,27 +125,26 @@ Day: {dayOfScrape}
         print(f'''Row {i+1}/25 written to file''')
 
         # Create a dict to be uploaded to mongoDB
-        mongoDBPost.append({
+        mongoDBPost = ({
             "Timestamp": f"{beginTimeFormatted}",
             "Website_Time": f"{timeOfScrape}",
             "City": f"{locationCity}",
             "State": f"{locationState}",
-            "Forecast_Time": f"{detailsTime}",
-            "Forecast_Temp": f"{detailsTemp}",
-            "Forecast_Precip": f"{detailsPrecip}"
+            "Forecast_Time": f"{detailsTime[i]}",
+            "Forecast_Temp": f"{detailsTemp[i]}",
+            "Forecast_Precip": f"{detailsPrecip[i]}"
         })
-        print(mongoDBPost)
+        collection.insert_one(mongoDBPost)
     # Close file
     print("Closing file...")
     f.close()
     print(f'{city}, {locationState} weather data written to {city}_{locationState}.csv.')
-    collection.insert_one(mongoDBPost[24])
     print(f"Inserted data into mongoDB collection: {locationCity}_{locationState}")
 
 # Close browser
 driver.close()
-endTime = time.time() - beginTime
-endMinutes = endTime/60
-print(f'Scrape completed in: {endTime} secs')
+endSeconds = time.time() - beginTime
+endMinutes = endSeconds/60
+print(f'Scrape completed in: {endMinutes} minutes, or {endSeconds} secs')
 
 
